@@ -35,18 +35,76 @@ $PAGE->set_title(get_string('admin_page_title', 'tool_consentwithdraw'));
 $PAGE->set_heading(get_string('admin_page_title', 'tool_consentwithdraw'));
 $PAGE->set_pagelayout('admin');
 
+$form = new \tool_consentwithdraw\form\user_search_form();
+
+// Status section — populated after the form is submitted.
+$statushtml = '';
+$selecteduserid = 0;
+
+if ($data = $form->get_data()) {
+    $selecteduserid = (int)$data->userid;
+}
+
+if ($selecteduserid > 0) {
+    $record = $DB->get_record('ai_policy_register', ['userid' => $selecteduserid]);
+    $selecteduser = core_user::get_user($selecteduserid, 'id, firstname, lastname, email', MUST_EXIST);
+
+    if ($record) {
+        $revokeurl = new moodle_url('/admin/tool/consentwithdraw/index.php', [
+            'userid'  => $selecteduserid,
+            'action'  => 'revoke',
+            'sesskey' => sesskey(),
+        ]);
+        $statushtml = $OUTPUT->notification(
+            get_string('policy_accepted', 'tool_consentwithdraw'),
+            \core\output\notification::NOTIFY_INFO,
+            false
+        );
+        $statushtml .= html_writer::tag('p',
+            html_writer::link(
+                '#',
+                get_string('btn_withdraw', 'tool_consentwithdraw'),
+                [
+                    'class'           => 'btn btn-danger',
+                    'data-action'     => 'admin-revoke',
+                    'data-userid'     => $selecteduserid,
+                    'data-username'   => fullname($selecteduser),
+                    'data-sesskey'    => sesskey(),
+                ]
+            )
+        );
+    } else {
+        $statushtml = $OUTPUT->notification(
+            get_string('policy_not_accepted', 'tool_consentwithdraw'),
+            \core\output\notification::NOTIFY_WARNING,
+            false
+        );
+    }
+}
+
+// Handle revoke action (POST via AMD ajax stays separate; this handles a direct link fallback).
+$action = optional_param('action', '', PARAM_ALPHA);
+if ($action === 'revoke') {
+    require_sesskey();
+    $revokeuserid = required_param('userid', PARAM_INT);
+    $DB->delete_records('ai_policy_register', ['userid' => $revokeuserid]);
+    redirect(
+        new moodle_url('/admin/tool/consentwithdraw/index.php'),
+        get_string('success_revoked', 'tool_consentwithdraw'),
+        null,
+        \core\output\notification::NOTIFY_SUCCESS
+    );
+}
+
 echo $OUTPUT->header();
 
-$templatedata = [
-    'sesskey'          => sesskey(),
-    'userid'           => 0,
-    'search_label'     => get_string('admin_search_label', 'tool_consentwithdraw'),
-    'search_help'      => get_string('admin_search_help', 'tool_consentwithdraw'),
-    'no_user_selected' => get_string('admin_no_user_selected', 'tool_consentwithdraw'),
-];
+$form->display();
 
-echo $OUTPUT->render_from_template('tool_consentwithdraw/admin_page', $templatedata);
+if ($statushtml) {
+    echo html_writer::div($statushtml, 'mt-3');
+}
 
+// Load the confirmation-modal JS only (no datasource or autocomplete wiring needed).
 $PAGE->requires->js_call_amd('tool_consentwithdraw/admin_tool', 'init');
 
 echo $OUTPUT->footer();
