@@ -25,37 +25,43 @@
  */
 
 import Ajax from 'core/ajax';
+import {getString} from 'core/str';
 
 /**
  * Autocomplete transport function called by core/form-autocomplete.
  *
- * @param {string} selector CSS selector of the enhanced element (unused).
+ * @param {string} selector CSS selector of the enhanced element.
  * @param {string} query The search string typed by the user.
  * @param {Function} callback Must be called with an array of {value, label} objects.
+ * @param {Function} failure Called with an error if the request fails.
  */
-export const transport = async(selector, query, callback) => {
+export const transport = async(selector, query, callback, failure) => {
     if (!query || query.length < 2) {
         callback([]);
         return;
     }
 
     try {
-        const result = await Ajax.call([{
-            methodname: 'core_user_get_users',
-            args: {
-                criteria: [
-                    {key: 'search', value: query},
-                ],
-            },
+        const response = await Ajax.call([{
+            methodname: 'core_user_search_identity',
+            args: {query: query},
         }])[0];
 
-        const suggestions = (result.users || []).map((user) => ({
+        if (response.overflow) {
+            const msg = await getString('toomanyuserstoshow', 'core', '>' + response.maxusersperpage);
+            callback(msg);
+            return;
+        }
+
+        const suggestions = (response.list || []).map((user) => ({
             value: String(user.id),
-            label: `${user.fullname} (${user.email})`,
+            label: user.extrafields
+                ? `${user.fullname} (${user.extrafields.map(f => f.value).join(', ')})`
+                : user.fullname,
         }));
         callback(suggestions);
     } catch (error) {
-        callback([]);
+        failure(error);
     }
 };
 
@@ -66,4 +72,9 @@ export const transport = async(selector, query, callback) => {
  * @param {Array} results
  * @return {Array}
  */
-export const processResults = (selector, results) => results;
+export const processResults = (selector, results) => {
+    if (!Array.isArray(results)) {
+        return results;
+    }
+    return results;
+};
