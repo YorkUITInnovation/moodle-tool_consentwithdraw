@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Plugin version information.
+ * Hook callbacks for tool_consentwithdraw.
  *
  * @package    tool_consentwithdraw
  * @copyright  2024 York University IT Innovation
@@ -24,8 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'tool_consentwithdraw';
-$plugin->version   = 2026041000.01;
-$plugin->requires  = 2024100700; // Moodle 4.5+
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+$callbacks = [
+    [
+        'hook' => \core_user\hook\extend_user_menu::class,
+        'callback' => \tool_consentwithdraw\hook_callbacks::class . '::extend_user_menu',
+    ],
+    [
+        'hook' => \core\hook\output\before_standard_top_of_body_html_generation::class,
+        'callback' => \tool_consentwithdraw\hook_callbacks::class . '::before_standard_top_of_body_html_generation',
+    ],
+];

@@ -24,53 +24,46 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-define(['core/ajax'], function(Ajax) {
+import Ajax from 'core/ajax';
 
-    'use strict';
+/**
+ * Autocomplete transport function called by core/form-autocomplete.
+ *
+ * @param {string} selector CSS selector of the enhanced element (unused).
+ * @param {string} query The search string typed by the user.
+ * @param {Function} callback Must be called with an array of {value, label} objects.
+ */
+export const transport = async(selector, query, callback) => {
+    if (!query || query.length < 2) {
+        callback([]);
+        return;
+    }
 
-    return {
-        /**
-         * Autocomplete transport function called by core/form-autocomplete.
-         *
-         * @param {string}   selector   CSS selector of the enhanced element (unused).
-         * @param {string}   query      The search string typed by the user.
-         * @param {Function} callback   Must be called with an array of {value, label} objects.
-         */
-        transport: function(selector, query, callback) {
-            if (!query || query.length < 2) {
-                callback([]);
-                return;
-            }
+    try {
+        const result = await Ajax.call([{
+            methodname: 'core_user_get_users',
+            args: {
+                criteria: [
+                    {key: 'search', value: query},
+                ],
+            },
+        }])[0];
 
-            Ajax.call([{
-                methodname: 'core_user_get_users',
-                args: {
-                    criteria: [
-                        {key: 'search', value: query},
-                    ],
-                },
-            }])[0].then(function(result) {
-                const suggestions = (result.users || []).map(function(user) {
-                    return {
-                        value: String(user.id),
-                        label: user.fullname + ' (' + user.email + ')',
-                    };
-                });
-                callback(suggestions);
-                return suggestions;
-            }).catch(function() {
-                callback([]);
-            });
-        },
+        const suggestions = (result.users || []).map((user) => ({
+            value: String(user.id),
+            label: `${user.fullname} (${user.email})`,
+        }));
+        callback(suggestions);
+    } catch (error) {
+        callback([]);
+    }
+};
 
-        /**
-         * Process callback — return the raw value unchanged.
-         *
-         * @param  {string} value
-         * @return {Promise<string>}
-         */
-        processResults: function(value) {
-            return Promise.resolve(value);
-        },
-    };
-});
+/**
+ * Process callback for autocomplete options.
+ *
+ * @param {string} selector
+ * @param {Array} results
+ * @return {Array}
+ */
+export const processResults = (selector, results) => results;

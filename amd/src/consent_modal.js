@@ -24,154 +24,160 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-define([
-    'core/ajax',
-    'core/modal_factory',
-    'core/modal_events',
-    'core/notification',
-    'core/str',
-], function(Ajax, ModalFactory, ModalEvents, Notification, Str) {
+import Ajax from 'core/ajax';
+import Modal from 'core/modal';
+import ModalSaveCancel from 'core/modal_save_cancel';
+import ModalEvents from 'core/modal_events';
+import Notification from 'core/notification';
+import {getStrings} from 'core/str';
 
-    'use strict';
+let listenerAttached = false;
 
-    /** @type {object} Public API */
-    const MODULE = {
+/**
+ * Attach a delegated click listener for the consent modal trigger.
+ */
+export const init = () => {
+    if (listenerAttached) {
+        return;
+    }
+    listenerAttached = true;
 
-        /**
-         * Attach a delegated click listener for the consent modal trigger.
-         */
-        init: function() {
-            document.addEventListener('click', function(e) {
-                const trigger = e.target.closest('[data-action="open-consent-modal"]');
-                if (trigger) {
-                    e.preventDefault();
-                    MODULE.openStatusModal();
-                }
+    document.addEventListener('click', (e) => {
+        const trigger = e.target.closest(
+            '[data-action="open-consent-modal"], a[href*="consentwithdraw=1"], a[href*="consentwithdraw%3D1"]'
+        );
+        if (!trigger) {
+            return;
+        }
+
+        e.preventDefault();
+        void openStatusModal();
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('consentwithdraw') === '1') {
+        void openStatusModal();
+        params.delete('consentwithdraw');
+        const cleanurl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, document.title, cleanurl);
+    }
+};
+
+/**
+ * Fetch the current user's consent status then open the status modal.
+ */
+const openStatusModal = async() => {
+    try {
+        const result = await Ajax.call([{
+            methodname: 'tool_consentwithdraw_check_status',
+            args: {userid: 0},
+        }])[0];
+        await showModal(result);
+    } catch (error) {
+        Notification.exception(error);
+    }
+};
+
+/**
+ * Build and display the status modal.
+ *
+ * @param {object} statusData Result from check_status external function.
+ * @return {Promise<void>}
+ */
+const showModal = async(statusData) => {
+    const strings = await getStrings([
+        {key: 'modal_title', component: 'tool_consentwithdraw'},
+        {key: statusData.accepted ? 'policy_accepted' : 'policy_not_accepted', component: 'tool_consentwithdraw'},
+        {key: 'btn_withdraw', component: 'tool_consentwithdraw'},
+        {key: 'btn_cancel', component: 'tool_consentwithdraw'},
+    ]);
+
+    let bodyHtml = `<p>${strings[1]}</p>`;
+    if (statusData.accepted) {
+        bodyHtml += `<button class="btn btn-danger" id="consent-withdraw-btn" data-recordid="${statusData.recordid}">${strings[2]}</button>`;
+    }
+
+    const modal = await Modal.create({
+        title: strings[0],
+        body: bodyHtml,
+        footer: `<button class="btn btn-secondary" data-action="cancel">${strings[3]}</button>`,
+        removeOnClose: true,
+    });
+
+    modal.getRoot().on('click', '#consent-withdraw-btn', (e) => {
+        const recordid = parseInt(e.currentTarget.dataset.recordid, 10);
+        void confirmRevoke(modal, recordid);
+    });
+
+    modal.getRoot().on('click', '[data-action="cancel"]', () => {
+        modal.hide();
+    });
+
+    modal.getRoot().on(ModalEvents.hidden, () => {
+        modal.destroy();
+    });
+
+    modal.show();
+};
+
+/**
+ * Show a confirmation modal before revoking consent.
+ *
+ * @param {object} parentModal The status modal to destroy on success.
+ * @param {number} recordid The consent record ID to delete.
+ * @return {Promise<void>}
+ */
+const confirmRevoke = async(parentModal, recordid) => {
+    const strings = await getStrings([
+        {key: 'confirm_title', component: 'tool_consentwithdraw'},
+        {key: 'confirm_message', component: 'tool_consentwithdraw'},
+        {key: 'btn_confirm', component: 'tool_consentwithdraw'},
+    ]);
+
+    const confirmModal = await ModalSaveCancel.create({
+        title: strings[0],
+        body: strings[1],
+        removeOnClose: true,
+    });
+
+    confirmModal.setSaveButtonText(strings[2]);
+
+    confirmModal.getRoot().on(ModalEvents.save, () => {
+        void doRevoke(recordid, parentModal, confirmModal);
+    });
+
+    confirmModal.getRoot().on(ModalEvents.hidden, () => {
+        confirmModal.destroy();
+    });
+
+    confirmModal.show();
+};
+
+/**
+ * Call the revoke_self web service and update the UI.
+ *
+ * @param {number} recordid
+ * @param {object} parentModal
+ * @param {object} confirmModal
+ */
+const doRevoke = async(recordid, parentModal, confirmModal) => {
+    try {
+        const result = await Ajax.call([{
+            methodname: 'tool_consentwithdraw_revoke_self',
+            args: {recordid: recordid},
+        }])[0];
+
+        confirmModal.destroy();
+        parentModal.destroy();
+
+        if (result.success) {
+            Notification.addNotification({
+                type: 'success',
+                message: result.message,
             });
-        },
-
-        /**
-         * Fetch the current user's consent status then open the status modal.
-         */
-        openStatusModal: function() {
-            Ajax.call([{
-                methodname: 'tool_consentwithdraw_check_status',
-                args: {userid: 0},
-            }])[0].then(function(result) {
-                return MODULE.showModal(result);
-            }).catch(Notification.exception);
-        },
-
-        /**
-         * Build and display the status modal.
-         *
-         * @param  {object} statusData  Result from check_status external function.
-         * @return {Promise}
-         */
-        showModal: function(statusData) {
-            return Str.get_strings([
-                {key: 'modal_title',        component: 'tool_consentwithdraw'},
-                {key: statusData.accepted ? 'policy_accepted' : 'policy_not_accepted', component: 'tool_consentwithdraw'},
-                {key: 'btn_withdraw',       component: 'tool_consentwithdraw'},
-                {key: 'btn_cancel',         component: 'tool_consentwithdraw'},
-            ]).then(function(strings) {
-                let bodyHtml = '<p>' + strings[1] + '</p>';
-                if (statusData.accepted) {
-                    bodyHtml += '<button class="btn btn-danger" id="consent-withdraw-btn"'
-                        + ' data-recordid="' + statusData.recordid + '">'
-                        + strings[2] + '</button>';
-                }
-
-                return ModalFactory.create({
-                    type: ModalFactory.types.DEFAULT,
-                    title: strings[0],
-                    body: bodyHtml,
-                    footer: '<button class="btn btn-secondary" data-action="cancel">' + strings[3] + '</button>',
-                });
-            }).then(function(modal) {
-                modal.show();
-
-                modal.getRoot().on('click', '#consent-withdraw-btn', function(e) {
-                    const recordid = parseInt(e.currentTarget.dataset.recordid, 10);
-                    MODULE.confirmRevoke(modal, recordid);
-                });
-
-                modal.getRoot().on('click', '[data-action="cancel"]', function() {
-                    modal.hide();
-                });
-
-                modal.getRoot().on(ModalEvents.hidden, function() {
-                    modal.destroy();
-                });
-
-                return modal;
-            });
-        },
-
-        /**
-         * Show a confirmation modal before revoking consent.
-         *
-         * @param  {object} parentModal  The status modal to destroy on success.
-         * @param  {number} recordid     The consent record ID to delete.
-         * @return {Promise}
-         */
-        confirmRevoke: function(parentModal, recordid) {
-            return Str.get_strings([
-                {key: 'confirm_title',   component: 'tool_consentwithdraw'},
-                {key: 'confirm_message', component: 'tool_consentwithdraw'},
-                {key: 'btn_confirm',     component: 'tool_consentwithdraw'},
-            ]).then(function(strings) {
-                return ModalFactory.create({
-                    type: ModalFactory.types.SAVE_CANCEL,
-                    title: strings[0],
-                    body: strings[1],
-                });
-            }).then(function(confirmModal) {
-                return Str.get_string('btn_confirm', 'tool_consentwithdraw').then(function(btnLabel) {
-                    confirmModal.setSaveButtonText(btnLabel);
-                    confirmModal.show();
-
-                    confirmModal.getRoot().on(ModalEvents.save, function() {
-                        MODULE.doRevoke(recordid, parentModal, confirmModal);
-                    });
-
-                    confirmModal.getRoot().on(ModalEvents.hidden, function() {
-                        confirmModal.destroy();
-                    });
-
-                    return confirmModal;
-                });
-            });
-        },
-
-        /**
-         * Call the revoke_self web service and update the UI.
-         *
-         * @param {number} recordid
-         * @param {object} parentModal
-         * @param {object} confirmModal
-         */
-        doRevoke: function(recordid, parentModal, confirmModal) {
-            Ajax.call([{
-                methodname: 'tool_consentwithdraw_revoke_self',
-                args: {recordid: recordid},
-            }])[0].then(function(result) {
-                confirmModal.destroy();
-                parentModal.destroy();
-                if (result.success) {
-                    Notification.addNotification({
-                        type: 'success',
-                        message: result.message,
-                    });
-                    // Re-open the modal to reflect the updated state.
-                    MODULE.openStatusModal();
-                }
-                return result;
-            }).catch(function(err) {
-                Notification.exception(err);
-            });
-        },
-    };
-
-    return MODULE;
-});
+            await openStatusModal();
+        }
+    } catch (error) {
+        Notification.exception(error);
+    }
+};

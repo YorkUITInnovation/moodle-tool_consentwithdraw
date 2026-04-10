@@ -24,159 +24,148 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-define([
-    'core/ajax',
-    'core/modal_factory',
-    'core/modal_events',
-    'core/notification',
-    'core/str',
-    'core/form-autocomplete',
-], function(Ajax, ModalFactory, ModalEvents, Notification, Str, Autocomplete) {
+import Ajax from 'core/ajax';
+import ModalSaveCancel from 'core/modal_save_cancel';
+import ModalEvents from 'core/modal_events';
+import Notification from 'core/notification';
+import {getStrings} from 'core/str';
+import Autocomplete from 'core/form-autocomplete';
 
-    'use strict';
+/**
+ * Initialise the admin page: wire up autocomplete and event delegation.
+ */
+export const init = () => {
+    const container = document.getElementById('tool-consentwithdraw-admin');
+    if (!container) {
+        return;
+    }
 
-    /** @type {object} Public API */
-    const AdminTool = {
+    // Enhance the plain text input into a user-search autocomplete.
+    Autocomplete.enhance(
+        '#tool-consentwithdraw-usersearch',
+        false,
+        'tool_consentwithdraw/user_search_datasource',
+        '',
+        false,
+        true,
+        '',
+        true
+    );
 
-        /**
-         * Initialise the admin page: wire up autocomplete and event delegation.
-         */
-        init: function() {
-            const container = document.getElementById('tool-consentwithdraw-admin');
-            if (!container) {
-                return;
+    // Listen for autocomplete selection changes.
+    container.addEventListener('change', (e) => {
+        if (e.target && e.target.id === 'tool-consentwithdraw-usersearch') {
+            const userid = parseInt(e.target.value, 10);
+            if (userid > 0) {
+                void checkUserStatus(userid);
             }
+        }
+    });
 
-            // Enhance the plain text input into a user-search autocomplete.
-            Autocomplete.enhance(
-                '#tool-consentwithdraw-usersearch',
-                false,
-                'tool_consentwithdraw/user_search_datasource',
-                '',
-                false,
-                true,
-                '',
-                true
-            );
+    // Delegated click handler for the revoke button rendered into the status div.
+    container.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="admin-revoke"]');
+        if (!btn) {
+            return;
+        }
 
-            // Listen for autocomplete selection changes.
-            container.addEventListener('change', function(e) {
-                if (e.target && e.target.id === 'tool-consentwithdraw-usersearch') {
-                    const userid = parseInt(e.target.value, 10);
-                    if (userid > 0) {
-                        AdminTool.checkUserStatus(userid);
-                    }
-                }
+        e.preventDefault();
+        const userid = parseInt(btn.dataset.userid, 10);
+        void confirmRevoke(userid);
+    });
+};
+
+/**
+ * Fetch and render consent status for the given user.
+ *
+ * @param {number} userid
+ */
+const checkUserStatus = async(userid) => {
+    const statusDiv = document.getElementById('tool-consentwithdraw-status');
+    if (!statusDiv) {
+        return;
+    }
+
+    try {
+        const result = await Ajax.call([{
+            methodname: 'tool_consentwithdraw_check_status',
+            args: {userid: userid},
+        }])[0];
+
+        const strings = await getStrings([
+            {
+                key: result.accepted ? 'policy_accepted' : 'policy_not_accepted',
+                component: 'tool_consentwithdraw',
+            },
+            {key: 'btn_withdraw', component: 'tool_consentwithdraw'},
+        ]);
+
+        let html = `<div class="col"><p>${strings[0]}</p>`;
+        if (result.accepted) {
+            html += `<button class="btn btn-danger" data-action="admin-revoke" data-userid="${userid}">${strings[1]}</button>`;
+        }
+        html += '</div>';
+        statusDiv.innerHTML = html;
+        statusDiv.setAttribute('aria-live', 'polite');
+    } catch (error) {
+        Notification.exception(error);
+    }
+};
+
+/**
+ * Show a confirmation modal before revoking the selected user's consent.
+ *
+ * @param {number} userid
+ */
+const confirmRevoke = async(userid) => {
+    const strings = await getStrings([
+        {key: 'confirm_title', component: 'tool_consentwithdraw'},
+        {key: 'confirm_admin_message', component: 'tool_consentwithdraw'},
+        {key: 'btn_confirm', component: 'tool_consentwithdraw'},
+    ]);
+
+    const modal = await ModalSaveCancel.create({
+        title: strings[0],
+        body: strings[1],
+        removeOnClose: true,
+    });
+
+    modal.setSaveButtonText(strings[2]);
+
+    modal.getRoot().on(ModalEvents.save, () => {
+        void doRevoke(userid, modal);
+    });
+
+    modal.getRoot().on(ModalEvents.hidden, () => {
+        modal.destroy();
+    });
+
+    modal.show();
+};
+
+/**
+ * Call the revoke_user web service and update the status panel.
+ *
+ * @param {number} userid
+ * @param {object} modal
+ */
+const doRevoke = async(userid, modal) => {
+    try {
+        const result = await Ajax.call([{
+            methodname: 'tool_consentwithdraw_revoke_user',
+            args: {userid: userid},
+        }])[0];
+
+        modal.destroy();
+        if (result.success) {
+            Notification.addNotification({
+                type: 'success',
+                message: result.message,
             });
-
-            // Delegated click handler for the revoke button rendered into the status div.
-            container.addEventListener('click', function(e) {
-                const btn = e.target.closest('[data-action="admin-revoke"]');
-                if (btn) {
-                    e.preventDefault();
-                    const userid = parseInt(btn.dataset.userid, 10);
-                    AdminTool.confirmRevoke(userid);
-                }
-            });
-        },
-
-        /**
-         * Fetch and render consent status for the given user.
-         *
-         * @param {number} userid
-         */
-        checkUserStatus: function(userid) {
-            const statusDiv = document.getElementById('tool-consentwithdraw-status');
-            if (!statusDiv) {
-                return;
-            }
-
-            Ajax.call([{
-                methodname: 'tool_consentwithdraw_check_status',
-                args: {userid: userid},
-            }])[0].then(function(result) {
-                return Str.get_strings([
-                    {
-                        key: result.accepted ? 'policy_accepted' : 'policy_not_accepted',
-                        component: 'tool_consentwithdraw',
-                    },
-                    {key: 'btn_withdraw', component: 'tool_consentwithdraw'},
-                ]).then(function(strings) {
-                    let html = '<div class="col"><p>' + strings[0] + '</p>';
-                    if (result.accepted) {
-                        html += '<button class="btn btn-danger"'
-                            + ' data-action="admin-revoke"'
-                            + ' data-userid="' + userid + '">'
-                            + strings[1]
-                            + '</button>';
-                    }
-                    html += '</div>';
-                    statusDiv.innerHTML = html;
-                    statusDiv.setAttribute('aria-live', 'polite');
-                    return strings;
-                });
-            }).catch(Notification.exception);
-        },
-
-        /**
-         * Show a confirmation modal before revoking the selected user's consent.
-         *
-         * @param  {number} userid
-         * @return {Promise}
-         */
-        confirmRevoke: function(userid) {
-            return Str.get_strings([
-                {key: 'confirm_title', component: 'tool_consentwithdraw'},
-                {key: 'confirm_admin_message', component: 'tool_consentwithdraw'},
-                {key: 'btn_confirm', component: 'tool_consentwithdraw'},
-            ]).then(function(strings) {
-                return ModalFactory.create({
-                    type: ModalFactory.types.SAVE_CANCEL,
-                    title: strings[0],
-                    body: strings[1],
-                }).then(function(modal) {
-                    modal.setSaveButtonText(strings[2]);
-                    modal.show();
-
-                    modal.getRoot().on(ModalEvents.save, function() {
-                        AdminTool.doRevoke(userid, modal);
-                    });
-
-                    modal.getRoot().on(ModalEvents.hidden, function() {
-                        modal.destroy();
-                    });
-
-                    return modal;
-                });
-            });
-        },
-
-        /**
-         * Call the revoke_user web service and update the status panel.
-         *
-         * @param {number} userid
-         * @param {object} modal
-         */
-        doRevoke: function(userid, modal) {
-            Ajax.call([{
-                methodname: 'tool_consentwithdraw_revoke_user',
-                args: {userid: userid},
-            }])[0].then(function(result) {
-                modal.destroy();
-                if (result.success) {
-                    Notification.addNotification({
-                        type: 'success',
-                        message: result.message,
-                    });
-                    AdminTool.checkUserStatus(userid);
-                }
-                return result;
-            }).catch(function(err) {
-                modal.destroy();
-                Notification.exception(err);
-            });
-        },
-    };
-
-    return AdminTool;
-});
+            await checkUserStatus(userid);
+        }
+    } catch (error) {
+        modal.destroy();
+        Notification.exception(error);
+    }
+};

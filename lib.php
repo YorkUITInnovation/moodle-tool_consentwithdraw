@@ -37,9 +37,9 @@ defined('MOODLE_INTERNAL') || die();
  * node (see {@see tool_consentwithdraw_extend_navigation_user_settings}).  The AMD
  * module is loaded here so it handles the click from that node on every page.
  *
- * @param global_navigation $navigation The global navigation object.
+ * @param \global_navigation $navigation The global navigation object.
  */
-function tool_consentwithdraw_extend_navigation(global_navigation $navigation) {
+function tool_consentwithdraw_extend_navigation(\global_navigation $navigation) {
     global $PAGE;
 
     if (!isloggedin() || isguestuser()) {
@@ -55,24 +55,44 @@ function tool_consentwithdraw_extend_navigation(global_navigation $navigation) {
  * This callback is invoked by Moodle's navigation system and adds a link to
  * the user's account settings navigation block.
  *
- * @param settings_navigation $settingsnav The settings navigation object.
- * @param context             $context     Current context.
+ * @param \navigation_node $navigation    The user settings navigation node.
+ * @param stdClass         $user          The user whose settings are being built.
+ * @param \context_user   $usercontext   The user's context.
+ * @param stdClass         $course        The current course.
+ * @param \context_course $coursecontext The course context.
  */
-function tool_consentwithdraw_extend_navigation_user_settings(settings_navigation $settingsnav, context $context) {
+function tool_consentwithdraw_extend_navigation_user_settings(
+    \navigation_node $navigation,
+    stdClass $user,
+    $usercontext,
+    stdClass $course,
+    $coursecontext
+) {
     if (!isloggedin() || isguestuser()) {
         return;
     }
 
-    $usernode = $settingsnav->find('useraccount', navigation_node::TYPE_CONTAINER);
+    $url = new \moodle_url('/user/preferences.php', ['consentwithdraw' => 1]);
+
+    $usernode = $navigation->find('useraccount', \navigation_node::TYPE_CONTAINER);
     if ($usernode) {
-        $url = new moodle_url('#', ['data-action' => 'open-consent-modal']);
         $usernode->add(
             get_string('withdraw_ai_consent', 'tool_consentwithdraw'),
             $url,
-            navigation_node::TYPE_SETTING,
+            \navigation_node::TYPE_SETTING,
             null,
             'consentwithdraw',
-            new pix_icon('i/lock', '')
+            new \pix_icon('i/lock', '')
         );
+        return;
     }
+
+    $navigation->add(
+        get_string('withdraw_ai_consent', 'tool_consentwithdraw'),
+        $url,
+        \navigation_node::TYPE_SETTING,
+        null,
+        'consentwithdraw',
+        new \pix_icon('i/lock', '')
+    );
 }
