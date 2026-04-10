@@ -1,0 +1,42 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template tool_consentwithdraw/consent_modal
+
+    Body content for the AI-policy consent-status modal shown to the current user.
+
+    Context variables required for this template:
+    * accepted           - true if the user has accepted the AI policy (boolean)
+    * recordid           - ai_policy_register record ID (int; 0 when not accepted)
+    * policy_accepted    - translated "Policy accepted" string (string)
+    * policy_not_accepted - translated "Policy not accepted" string (string)
+    * btn_withdraw       - translated label for the withdraw button (string)
+}}
+<div class="tool-consentwithdraw-modal-body">
+    {{#accepted}}
+    <p>{{policy_accepted}}</p>
+    <button class="btn btn-danger float-end"
+            id="consent-withdraw-btn"
+            data-recordid="{{recordid}}"
+            aria-label="{{btn_withdraw}}">
+        {{btn_withdraw}}
+    </button>
+    {{/accepted}}
+    {{^accepted}}
+    <p>{{policy_not_accepted}}</p>
+    {{/accepted}}
+</div>
