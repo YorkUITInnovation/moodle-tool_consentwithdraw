@@ -73,6 +73,15 @@ class revoke_self extends external_api {
 
         $DB->delete_records('ai_policy_register', ['id' => $params['recordid']]);
 
+        // Invalidate the Moodle 5.1 core AI policy cache so the policy popup
+        // is shown immediately on the next page load — not after cache expiry.
+        try {
+            $policycache = \cache::make('core', 'ai_policy');
+            $policycache->delete((int)$USER->id);
+        } catch (\Throwable $e) {
+            // Cache may not exist in all environments — safe to ignore.
+        }
+
         return [
             'success' => true,
             'message' => get_string('success_revoked', 'tool_consentwithdraw'),
