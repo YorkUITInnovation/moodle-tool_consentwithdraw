@@ -25,6 +25,31 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
+ * Extend the global navigation tree.
+ *
+ * This fires on every page load and is used to register the AMD consent-modal
+ * module for logged-in non-guest users so the trigger link in user settings is
+ * always functional.
+ *
+ * Note on user-menu integration: Moodle 5.x does not expose a standard plugin
+ * callback to inject items directly into the top-bar user dropdown. The most
+ * maintainable extension point is therefore the user-account settings navigation
+ * node (see {@see tool_consentwithdraw_extend_navigation_user_settings}).  The AMD
+ * module is loaded here so it handles the click from that node on every page.
+ *
+ * @param global_navigation $navigation The global navigation object.
+ */
+function tool_consentwithdraw_extend_navigation(global_navigation $navigation) {
+    global $PAGE;
+
+    if (!isloggedin() || isguestuser()) {
+        return;
+    }
+
+    $PAGE->requires->js_call_amd('tool_consentwithdraw/consent_modal', 'init');
+}
+
+/**
  * Extend user settings navigation with a consent withdraw link.
  *
  * This callback is invoked by Moodle's navigation system and adds a link to
@@ -34,8 +59,6 @@ defined('MOODLE_INTERNAL') || die();
  * @param context             $context     Current context.
  */
 function tool_consentwithdraw_extend_navigation_user_settings(settings_navigation $settingsnav, context $context) {
-    global $PAGE;
-
     if (!isloggedin() || isguestuser()) {
         return;
     }
@@ -51,8 +74,5 @@ function tool_consentwithdraw_extend_navigation_user_settings(settings_navigatio
             'consentwithdraw',
             new pix_icon('i/lock', '')
         );
-
-        // Initialise the AMD consent modal module so the link is functional.
-        $PAGE->requires->js_call_amd('tool_consentwithdraw/consent_modal', 'init');
     }
 }
