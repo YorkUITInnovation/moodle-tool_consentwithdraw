@@ -126,9 +126,9 @@ define([
          */
         confirmRevoke: function(userid) {
             return Str.get_strings([
-                {key: 'confirm_title',         component: 'tool_consentwithdraw'},
-                {key: 'confirm_admin_message',  component: 'tool_consentwithdraw'},
-                {key: 'btn_confirm',            component: 'tool_consentwithdraw'},
+                {key: 'confirm_title', component: 'tool_consentwithdraw'},
+                {key: 'confirm_admin_message', component: 'tool_consentwithdraw'},
+                {key: 'btn_confirm', component: 'tool_consentwithdraw'},
             ]).then(function(strings) {
                 return ModalFactory.create({
                     type: ModalFactory.types.SAVE_CANCEL,
